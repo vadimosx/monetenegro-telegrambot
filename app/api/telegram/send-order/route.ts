@@ -18,6 +18,7 @@ export async function POST(request: Request) {
       telegramUsername,
       telegramUserId,
       isTelegramWebApp,
+      city,
     } = body
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN
@@ -49,7 +50,8 @@ export async function POST(request: Request) {
     }
 
     let groupMessage = `🔔 <b>Новая заявка на обмен</b>\n\n`
-    groupMessage += `${telegramContactLine}\n\n`
+    groupMessage += `${telegramContactLine}\n`
+    groupMessage += `📍 Город: ${safe(city || "Не указан")}\n\n`
     groupMessage += `📊 Направление: ${safe(fromCurrency)} → ${safe(toCurrency)}\n`
     groupMessage += `💰 Отдает: ${safe(fromAmount)} ${safe(fromCurrency)}\n`
     groupMessage += `💵 Получает: ${safe(toAmount)} ${safe(toCurrency)}\n`
