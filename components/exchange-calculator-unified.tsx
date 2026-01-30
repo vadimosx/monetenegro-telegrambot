@@ -12,6 +12,8 @@ import { ArrowUpDown, Calculator } from "lucide-react"
 interface ExchangeCalculatorUnifiedProps {
   onOrderCreate: () => void
   showTechnicalInfo?: boolean
+  selectedCity?: string
+  getCityName?: (cityId: string) => string
 }
 
 interface MarginTier {
@@ -55,6 +57,8 @@ const exchangeDirections = [
 export function ExchangeCalculatorUnified({
   onOrderCreate,
   showTechnicalInfo = false,
+  selectedCity = "budva",
+  getCityName,
 }: ExchangeCalculatorUnifiedProps) {
   const [fromCurrency, setFromCurrency] = useState("USDT")
   const [toCurrency, setToCurrency] = useState("EUR")
@@ -492,6 +496,7 @@ export function ExchangeCalculatorUnified({
           telegramUsername: finalContact,
           telegramUserId: telegramUserId,
           isTelegramWebApp: isTelegramWebApp,
+          city: getCityName ? getCityName(selectedCity) : selectedCity,
         }),
       })
 

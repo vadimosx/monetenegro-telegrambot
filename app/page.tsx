@@ -7,13 +7,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { ExchangeCalculatorUnified } from "@/components/exchange-calculator-unified"
 import { OrderManager } from "@/components/order-manager"
 import { AdminPanel } from "@/components/admin-panel"
-import { LocationSwitcher } from "@/components/location-switcher"
+import { LocationSwitcher, getCityName } from "@/components/location-switcher"
 import { ShoppingCart, Settings, Calculator, TrendingUp, Zap, MapPin } from "lucide-react"
 
 export default function USDTManApp() {
   const [orderCount, setOrderCount] = useState(0)
   const [showOrders, setShowOrders] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
+  const [selectedCity, setSelectedCity] = useState("budva")
 
   return (
     <div className="min-h-screen serbia-bg">
@@ -62,12 +63,12 @@ export default function USDTManApp() {
             </div>
             <p className="text-gray-300 mb-3">Черногория</p>
 
-            <LocationSwitcher />
+            <LocationSwitcher value={selectedCity} onChange={setSelectedCity} />
           </div>
         </div>
 
         <div className="px-4 pb-6">
-          <ExchangeCalculatorUnified onOrderCreate={() => setOrderCount((prev) => prev + 1)} />
+          <ExchangeCalculatorUnified onOrderCreate={() => setOrderCount((prev) => prev + 1)} selectedCity={selectedCity} getCityName={getCityName} />
         </div>
       </div>
 
