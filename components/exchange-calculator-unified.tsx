@@ -529,6 +529,36 @@ export function ExchangeCalculatorUnified({
         console.log("[v0] Failed to save order to Google Sheets, but continuing...")
       }
 
+      // Save deal to Neon database
+      try {
+        const dealResponse = await fetch("/api/deals/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fromCurrency,
+            toCurrency,
+            fromAmount: amount,
+            toAmount: toAmount,
+            fromBank: fromBank || null,
+            toBank: toBank || null,
+            rate: rate !== null ? rate.toFixed(6) : "0",
+            telegramUsername: finalContact,
+            city: getCityName ? getCityName(selectedCity) : selectedCity,
+          }),
+        })
+
+        const dealData = await dealResponse.json()
+        if (dealResponse.ok) {
+          console.log("[v0] Deal saved to database, ID:", dealData.dealId)
+        } else {
+          console.log("[v0] Failed to save deal to database:", dealData.error)
+        }
+      } catch (dealError) {
+        console.log("[v0] Error saving deal to database:", dealError)
+      }
+
       alert("Спасибо за вашу заявку! С вами свяжется оператор в ближайшее время.")
 
       onOrderCreate()
