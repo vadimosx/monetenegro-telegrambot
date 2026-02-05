@@ -529,6 +529,35 @@ export function ExchangeCalculatorUnified({
         console.log("[v0] Failed to save order to Google Sheets, but continuing...")
       }
 
+      // Save to deals database for tracking
+      try {
+        const dealResponse = await fetch("/api/deals", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            direction: `${fromCurrency} → ${toCurrency}`,
+            client_nickname: finalContact,
+            client_telegram: finalContact,
+            requested_give_amount: parseFloat(amount) || 0,
+            requested_give_currency: fromCurrency,
+            requested_receive_amount: parseFloat(toAmount) || 0,
+            requested_receive_currency: toCurrency,
+            requested_rate: rate,
+            note: `Город: ${getCityName ? getCityName(selectedCity) : selectedCity}${fromBank ? `, Банк: ${fromBank}` : ""}`,
+          }),
+        })
+        
+        if (!dealResponse.ok) {
+          console.log("[v0] Failed to save deal to database, but continuing...")
+        } else {
+          console.log("[v0] Deal saved to database successfully")
+        }
+      } catch (dealError) {
+        console.error("[v0] Error saving deal to database:", dealError)
+      }
+
       alert("Спасибо за вашу заявку! С вами свяжется оператор в ближайшее время.")
 
       onOrderCreate()
