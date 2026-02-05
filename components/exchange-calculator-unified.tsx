@@ -507,35 +507,14 @@ export function ExchangeCalculatorUnified({
         return
       }
 
-      const sheetsResponse = await fetch("/api/google-sheets/save-order", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          fromCurrency,
-          toCurrency,
-          fromAmount: amount,
-          toAmount: toAmount,
-          fromBank: fromBank || "N/A",
-          toBank: toBank || "N/A",
-          rate: rate !== null ? rate.toFixed(6) : "0",
-          timestamp: new Date().toISOString(),
-          telegramUsername: finalContact,
-        }),
-      })
+      // Save deal to Neon database and Google Sheets in parallel (non-blocking)
+      const dealCity = getCityName ? getCityName(selectedCity) : selectedCity
+      const dealRateStr = rate !== null ? rate.toFixed(6) : "0"
 
-      if (!sheetsResponse.ok) {
-        console.log("[v0] Failed to save order to Google Sheets, but continuing...")
-      }
-
-      // Save deal to Neon database
-      try {
-        const dealResponse = await fetch("/api/deals/create", {
+      const [dealResult, sheetsResult] = await Promise.allSettled([
+        fetch("/api/deals/create", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             fromCurrency,
             toCurrency,
@@ -543,20 +522,41 @@ export function ExchangeCalculatorUnified({
             toAmount: toAmount,
             fromBank: fromBank || null,
             toBank: toBank || null,
-            rate: rate !== null ? rate.toFixed(6) : "0",
+            rate: dealRateStr,
             telegramUsername: finalContact,
-            city: getCityName ? getCityName(selectedCity) : selectedCity,
+            city: dealCity,
           }),
-        })
+        }).then(async (res) => {
+          const data = await res.json()
+          if (res.ok) {
+            console.log("[v0] Deal saved to database, ID:", data.dealId)
+          } else {
+            console.log("[v0] Failed to save deal to database:", data.error)
+          }
+          return data
+        }),
+        fetch("/api/google-sheets/save-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fromCurrency,
+            toCurrency,
+            fromAmount: amount,
+            toAmount: toAmount,
+            fromBank: fromBank || "N/A",
+            toBank: toBank || "N/A",
+            rate: dealRateStr,
+            timestamp: new Date().toISOString(),
+            telegramUsername: finalContact,
+          }),
+        }),
+      ])
 
-        const dealData = await dealResponse.json()
-        if (dealResponse.ok) {
-          console.log("[v0] Deal saved to database, ID:", dealData.dealId)
-        } else {
-          console.log("[v0] Failed to save deal to database:", dealData.error)
-        }
-      } catch (dealError) {
-        console.log("[v0] Error saving deal to database:", dealError)
+      if (dealResult.status === "rejected") {
+        console.log("[v0] Error saving deal:", dealResult.reason)
+      }
+      if (sheetsResult.status === "rejected") {
+        console.log("[v0] Error saving to Google Sheets:", sheetsResult.reason)
       }
 
       alert("Спасибо за вашу заявку! С вами свяжется оператор в ближайшее время.")
