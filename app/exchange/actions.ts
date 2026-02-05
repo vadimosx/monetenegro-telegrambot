@@ -96,12 +96,15 @@ export async function addBuyback(data: {
   notes: string
 }) {
   try {
+    console.log("[v0] addBuyback called with:", JSON.stringify(data))
     const eurEquivalent = data.amount * data.rate
+    console.log("[v0] EUR equivalent:", eurEquivalent)
 
     await sql`
       INSERT INTO buybacks (curator_id, currency, amount, rate, eur_equivalent, notes)
       VALUES (${data.curatorId}, ${data.currency}, ${data.amount}, ${data.rate}, ${eurEquivalent}, ${data.notes || null})
     `
+    console.log("[v0] Buyback inserted successfully")
 
     // Update curator balance
     if (data.currency === "RUB") {
@@ -132,6 +135,7 @@ export async function closeDeal(id: number, data: {
   note: string
 }) {
   try {
+    console.log("[v0] closeDeal called with id:", id, "data:", JSON.stringify(data))
     // Get the deal first
     const [deal] = await sql`SELECT * FROM deals WHERE id = ${id}`
     if (!deal) {

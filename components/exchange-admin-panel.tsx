@@ -131,13 +131,15 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
     note: ""
   })
 
+  const doRefresh = async () => {
+    const result = await refreshData()
+    if (result.success && result.data) {
+      setData(result.data)
+    }
+  }
+
   const refresh = () => {
-    startTransition(async () => {
-      const result = await refreshData()
-      if (result.success && result.data) {
-        setData(result.data)
-      }
-    })
+    startTransition(doRefresh)
   }
 
   const handleAddCurator = () => {
@@ -146,7 +148,9 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
       if (result.success) {
         setNewCurator({ name: "", telegram: "", phone: "", notes: "" })
         setShowAddCurator(false)
-        refresh()
+        await doRefresh()
+      } else {
+        alert("Ошибка при добавлении куратора")
       }
     })
   }
@@ -163,7 +167,7 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
       })
       if (result.success) {
         setEditingCurator(null)
-        refresh()
+        await doRefresh()
       }
     })
   }
@@ -172,23 +176,34 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
     if (!confirm("Удалить куратора?")) return
     startTransition(async () => {
       await deleteCurator(id)
-      refresh()
+      await doRefresh()
     })
   }
 
   const handleAddBuyback = () => {
+    const curatorId = parseInt(newBuyback.curatorId)
+    const amount = parseFloat(newBuyback.amount)
+    const rate = parseFloat(newBuyback.rate)
+    
+    if (isNaN(curatorId) || isNaN(amount) || isNaN(rate)) {
+      alert("Заполните все обязательные поля корректно")
+      return
+    }
+    
     startTransition(async () => {
       const result = await addBuyback({
-        curatorId: parseInt(newBuyback.curatorId),
+        curatorId,
         currency: newBuyback.currency,
-        amount: parseFloat(newBuyback.amount),
-        rate: parseFloat(newBuyback.rate),
+        amount,
+        rate,
         notes: newBuyback.notes
       })
       if (result.success) {
         setNewBuyback({ curatorId: "", currency: "RUB", amount: "", rate: "", notes: "" })
         setShowAddBuyback(false)
-        refresh()
+        await doRefresh()
+      } else {
+        alert("Ошибка при добавлении откупа: " + (result.error || ""))
       }
     })
   }
@@ -211,20 +226,33 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
 
   const handleCloseDeal = () => {
     if (!closingDeal) return
+    
+    const curatorId = parseInt(closeForm.curatorId)
+    const actualGiveAmount = parseFloat(closeForm.actualGiveAmount)
+    const actualReceiveAmount = parseFloat(closeForm.actualReceiveAmount)
+    const actualRate = parseFloat(closeForm.actualRate)
+    
+    if (isNaN(curatorId) || isNaN(actualGiveAmount) || isNaN(actualReceiveAmount) || isNaN(actualRate)) {
+      alert("Заполните все обязательные поля корректно")
+      return
+    }
+    
     startTransition(async () => {
       const result = await closeDeal(closingDeal.id, {
-        curatorId: parseInt(closeForm.curatorId),
-        actualGiveAmount: parseFloat(closeForm.actualGiveAmount),
+        curatorId,
+        actualGiveAmount,
         actualGiveCurrency: closeForm.actualGiveCurrency,
-        actualReceiveAmount: parseFloat(closeForm.actualReceiveAmount),
+        actualReceiveAmount,
         actualReceiveCurrency: closeForm.actualReceiveCurrency,
-        actualRate: parseFloat(closeForm.actualRate),
+        actualRate,
         eurCostAtDeal: parseFloat(closeForm.eurCostAtDeal) || 0,
         note: closeForm.note
       })
       if (result.success) {
         setClosingDeal(null)
-        refresh()
+        await doRefresh()
+      } else {
+        alert("Ошибка при закрытии сделки: " + (result.error || ""))
       }
     })
   }
