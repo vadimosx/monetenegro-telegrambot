@@ -48,10 +48,13 @@ interface Buyback {
   id: number
   curator_id: number
   curator_name: string
-  currency: string
-  amount: string
+  eur_amount: string
+  usdt_spent: string
   rate: string
-  eur_equivalent: string
+  eur_balance_before: string | null
+  eur_balance_after: string | null
+  avg_rate_before: string | null
+  avg_rate_after: string | null
   notes: string | null
   created_at: string
 }
@@ -142,17 +145,15 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
     startTransition(doRefresh)
   }
 
-  const handleAddCurator = () => {
-    startTransition(async () => {
-      const result = await addCurator(newCurator)
-      if (result.success) {
-        setNewCurator({ name: "", telegram: "", phone: "", notes: "" })
-        setShowAddCurator(false)
-        await doRefresh()
-      } else {
-        alert("Ошибка при добавлении куратора")
-      }
-    })
+  const handleAddCurator = async () => {
+    const result = await addCurator(newCurator)
+    if (result.success) {
+      setNewCurator({ name: "", telegram: "", phone: "", notes: "" })
+      setShowAddCurator(false)
+      startTransition(doRefresh)
+    } else {
+      alert("Ошибка при добавлении куратора")
+    }
   }
 
   const handleUpdateCurator = () => {
@@ -180,7 +181,7 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
     })
   }
 
-  const handleAddBuyback = () => {
+  const handleAddBuyback = async () => {
     const curatorId = parseInt(newBuyback.curatorId)
     const eurAmount = parseFloat(newBuyback.eurAmount)
     const usdtSpent = parseFloat(newBuyback.usdtSpent)
@@ -191,22 +192,21 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
       return
     }
     
-    startTransition(async () => {
-      const result = await addBuyback({
-        curatorId,
-        eurAmount,
-        usdtSpent,
-        rate,
-        notes: newBuyback.notes
-      })
-      if (result.success) {
-        setNewBuyback({ curatorId: "", eurAmount: "", usdtSpent: "", rate: "", notes: "" })
-        setShowAddBuyback(false)
-        await doRefresh()
-      } else {
-        alert("Ошибка при добавлении откупа: " + (result.error || ""))
-      }
+    const result = await addBuyback({
+      curatorId,
+      eurAmount,
+      usdtSpent,
+      rate,
+      notes: newBuyback.notes
     })
+    
+    if (result.success) {
+      setNewBuyback({ curatorId: "", eurAmount: "", usdtSpent: "", rate: "", notes: "" })
+      setShowAddBuyback(false)
+      startTransition(doRefresh)
+    } else {
+      alert("Ошибка при добавлении откупа: " + (result.error || ""))
+    }
   }
 
   const openCloseDealDialog = (deal: Deal) => {
@@ -225,7 +225,7 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
     })
   }
 
-  const handleCloseDeal = () => {
+  const handleCloseDeal = async () => {
     if (!closingDeal) return
     
     const curatorId = parseInt(closeForm.curatorId)
@@ -238,24 +238,23 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
       return
     }
     
-    startTransition(async () => {
-      const result = await closeDeal(closingDeal.id, {
-        curatorId,
-        actualGiveAmount,
-        actualGiveCurrency: closeForm.actualGiveCurrency,
-        actualReceiveAmount,
-        actualReceiveCurrency: closeForm.actualReceiveCurrency,
-        actualRate,
-        eurCostAtDeal: parseFloat(closeForm.eurCostAtDeal) || 0,
-        note: closeForm.note
-      })
-      if (result.success) {
-        setClosingDeal(null)
-        await doRefresh()
-      } else {
-        alert("Ошибка при закрытии сделки: " + (result.error || ""))
-      }
+    const result = await closeDeal(closingDeal.id, {
+      curatorId,
+      actualGiveAmount,
+      actualGiveCurrency: closeForm.actualGiveCurrency,
+      actualReceiveAmount,
+      actualReceiveCurrency: closeForm.actualReceiveCurrency,
+      actualRate,
+      eurCostAtDeal: parseFloat(closeForm.eurCostAtDeal) || 0,
+      note: closeForm.note
     })
+    
+    if (result.success) {
+      setClosingDeal(null)
+      startTransition(doRefresh)
+    } else {
+      alert("Ошибка при закрытии сделки: " + (result.error || ""))
+    }
   }
 
   const formatNum = (val: string | null | undefined) => {

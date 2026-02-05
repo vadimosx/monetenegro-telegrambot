@@ -150,7 +150,6 @@ export async function closeDeal(id: number, data: {
   note: string
 }) {
   try {
-    console.log("[v0] closeDeal called with id:", id, "data:", JSON.stringify(data))
     // Get the deal first
     const [deal] = await sql`SELECT * FROM deals WHERE id = ${id}`
     if (!deal) {
