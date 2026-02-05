@@ -18,7 +18,7 @@ async function getData() {
         LEFT JOIN curators c ON d.curator_id = c.id 
         ORDER BY d.created_at DESC 
         LIMIT 100`,
-    sql`SELECT * FROM currency_rates WHERE is_active = true ORDER BY currency_pair`,
+    sql`SELECT * FROM currency_rates WHERE is_active = true ORDER BY currency`,
   ])
 
   return { curators, buybacks, deals, rates }
