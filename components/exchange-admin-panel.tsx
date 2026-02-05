@@ -108,11 +108,11 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
   const [editingCurator, setEditingCurator] = useState<Curator | null>(null)
   const [showAddCurator, setShowAddCurator] = useState(false)
   
-  // Buyback form state
+  // Buyback form state (откуп = покупка EUR за USDT)
   const [newBuyback, setNewBuyback] = useState({ 
     curatorId: "", 
-    currency: "RUB", 
-    amount: "", 
+    eurAmount: "", 
+    usdtSpent: "", 
     rate: "",
     notes: ""
   })
@@ -182,10 +182,11 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
 
   const handleAddBuyback = () => {
     const curatorId = parseInt(newBuyback.curatorId)
-    const amount = parseFloat(newBuyback.amount)
+    const eurAmount = parseFloat(newBuyback.eurAmount)
+    const usdtSpent = parseFloat(newBuyback.usdtSpent)
     const rate = parseFloat(newBuyback.rate)
     
-    if (isNaN(curatorId) || isNaN(amount) || isNaN(rate)) {
+    if (isNaN(curatorId) || isNaN(eurAmount) || isNaN(usdtSpent) || isNaN(rate)) {
       alert("Заполните все обязательные поля корректно")
       return
     }
@@ -193,13 +194,13 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
     startTransition(async () => {
       const result = await addBuyback({
         curatorId,
-        currency: newBuyback.currency,
-        amount,
+        eurAmount,
+        usdtSpent,
         rate,
         notes: newBuyback.notes
       })
       if (result.success) {
-        setNewBuyback({ curatorId: "", currency: "RUB", amount: "", rate: "", notes: "" })
+        setNewBuyback({ curatorId: "", eurAmount: "", usdtSpent: "", rate: "", notes: "" })
         setShowAddBuyback(false)
         await doRefresh()
       } else {
@@ -764,7 +765,7 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Новый откуп</DialogTitle>
-                  <DialogDescription>Зафиксируйте откуп валюты у куратора</DialogDescription>
+                  <DialogDescription>Покупка EUR за USDT у куратора</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>
@@ -776,44 +777,50 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
                     >
                       <option value="">Выберите куратора</option>
                       {data.curators.filter(c => c.is_active).map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
+                        <option key={c.id} value={c.id}>{c.name} (EUR: {formatNum(c.balance_eur)})</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Валюта *</label>
-                    <select 
-                      className="w-full p-2 border rounded-md bg-background"
-                      value={newBuyback.currency}
-                      onChange={e => setNewBuyback(prev => ({ ...prev, currency: e.target.value }))}
-                    >
-                      <option value="RUB">RUB</option>
-                      <option value="EUR">EUR</option>
-                      <option value="USDT">USDT</option>
-                      <option value="USD">USD</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Сумма *</label>
+                    <label className="text-sm font-medium">Сумма EUR (получаем) *</label>
                     <Input 
                       type="number"
-                      value={newBuyback.amount}
-                      onChange={e => setNewBuyback(prev => ({ ...prev, amount: e.target.value }))}
-                      placeholder="10000"
+                      value={newBuyback.eurAmount}
+                      onChange={e => {
+                        const eurAmount = e.target.value
+                        const rate = newBuyback.rate
+                        const usdtSpent = eurAmount && rate ? (parseFloat(eurAmount) * parseFloat(rate)).toFixed(2) : newBuyback.usdtSpent
+                        setNewBuyback(prev => ({ ...prev, eurAmount, usdtSpent }))
+                      }}
+                      placeholder="1000"
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Курс к EUR *</label>
+                    <label className="text-sm font-medium">Курс (USDT за 1 EUR) *</label>
                     <Input 
                       type="number"
                       step="0.0001"
                       value={newBuyback.rate}
-                      onChange={e => setNewBuyback(prev => ({ ...prev, rate: e.target.value }))}
-                      placeholder="0.0095"
+                      onChange={e => {
+                        const rate = e.target.value
+                        const eurAmount = newBuyback.eurAmount
+                        const usdtSpent = eurAmount && rate ? (parseFloat(eurAmount) * parseFloat(rate)).toFixed(2) : newBuyback.usdtSpent
+                        setNewBuyback(prev => ({ ...prev, rate, usdtSpent }))
+                      }}
+                      placeholder="1.08"
                     />
-                    {newBuyback.amount && newBuyback.rate && (
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">USDT потрачено *</label>
+                    <Input 
+                      type="number"
+                      value={newBuyback.usdtSpent}
+                      onChange={e => setNewBuyback(prev => ({ ...prev, usdtSpent: e.target.value }))}
+                      placeholder="1080"
+                    />
+                    {newBuyback.eurAmount && newBuyback.usdtSpent && (
                       <div className="text-sm text-muted-foreground mt-1">
-                        {"= "}{(parseFloat(newBuyback.amount) * parseFloat(newBuyback.rate)).toFixed(2)} EUR
+                        {newBuyback.eurAmount} EUR за {newBuyback.usdtSpent} USDT
                       </div>
                     )}
                   </div>
@@ -830,7 +837,7 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
                   <Button variant="outline" onClick={() => setShowAddBuyback(false)}>Отмена</Button>
                   <Button 
                     onClick={handleAddBuyback} 
-                    disabled={isPending || !newBuyback.curatorId || !newBuyback.amount || !newBuyback.rate}
+                    disabled={isPending || !newBuyback.curatorId || !newBuyback.eurAmount || !newBuyback.usdtSpent || !newBuyback.rate}
                   >
                     Добавить
                   </Button>
@@ -847,9 +854,10 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
                     <tr>
                       <th className="p-3 text-left font-medium">Дата</th>
                       <th className="p-3 text-left font-medium">Куратор</th>
-                      <th className="p-3 text-right font-medium">Сумма</th>
-                      <th className="p-3 text-right font-medium">Курс</th>
                       <th className="p-3 text-right font-medium">EUR</th>
+                      <th className="p-3 text-right font-medium">USDT</th>
+                      <th className="p-3 text-right font-medium">Курс</th>
+                      <th className="p-3 text-right font-medium">Ср. курс после</th>
                       <th className="p-3 text-left font-medium">Заметки</th>
                     </tr>
                   </thead>
@@ -860,14 +868,17 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
                           {new Date(buyback.created_at).toLocaleDateString("ru-RU")}
                         </td>
                         <td className="p-3 font-medium">{buyback.curator_name}</td>
+                        <td className="p-3 text-right font-mono font-medium">
+                          {formatNum(buyback.eur_amount)}
+                        </td>
                         <td className="p-3 text-right font-mono">
-                          {formatNum(buyback.amount)} {buyback.currency}
+                          {formatNum(buyback.usdt_spent)}
                         </td>
                         <td className="p-3 text-right font-mono text-sm">
                           {formatRate(buyback.rate)}
                         </td>
-                        <td className="p-3 text-right font-mono font-medium">
-                          {formatNum(buyback.eur_equivalent)}
+                        <td className="p-3 text-right font-mono text-sm">
+                          {formatRate(buyback.avg_rate_after)}
                         </td>
                         <td className="p-3 text-sm text-muted-foreground">
                           {buyback.notes || "-"}
@@ -876,7 +887,7 @@ export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
                     ))}
                     {data.buybacks.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                        <td colSpan={7} className="p-8 text-center text-muted-foreground">
                           Откупов пока нет
                         </td>
                       </tr>

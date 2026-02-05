@@ -88,32 +88,47 @@ export async function deleteCurator(id: number) {
 }
 
 // Buyback actions
+// Откуп = покупка EUR за USDT у куратора
+// eur_amount - сколько EUR купили
+// usdt_spent - сколько USDT потратили  
+// rate - курс (USDT за 1 EUR)
 export async function addBuyback(data: {
   curatorId: number
-  currency: string
-  amount: number
+  eurAmount: number
+  usdtSpent: number
   rate: number
   notes: string
 }) {
   try {
-    console.log("[v0] addBuyback called with:", JSON.stringify(data))
-    const eurEquivalent = data.amount * data.rate
-    console.log("[v0] EUR equivalent:", eurEquivalent)
+    // Get curator's current EUR balance and avg rate
+    const [curator] = await sql`SELECT balance_eur FROM curators WHERE id = ${data.curatorId}`
+    if (!curator) return { success: false, error: "Куратор не найден" }
+
+    const eurBalanceBefore = parseFloat(curator.balance_eur) || 0
+    const eurBalanceAfter = eurBalanceBefore + data.eurAmount
+
+    // Calculate new average rate
+    // avgRateBefore * eurBalanceBefore + newRate * newEurAmount / eurBalanceAfter
+    const [avgResult] = await sql`
+      SELECT COALESCE(
+        CASE WHEN SUM(eur_amount) > 0 
+          THEN SUM(usdt_spent) / SUM(eur_amount) 
+          ELSE 0 
+        END, 0
+      ) as avg_rate
+      FROM buybacks WHERE curator_id = ${data.curatorId}
+    `
+    const avgRateBefore = parseFloat(avgResult?.avg_rate) || 0
+    const totalUsdtSpent = avgRateBefore * eurBalanceBefore + data.usdtSpent
+    const avgRateAfter = eurBalanceAfter > 0 ? totalUsdtSpent / eurBalanceAfter : data.rate
 
     await sql`
-      INSERT INTO buybacks (curator_id, currency, amount, rate, eur_equivalent, notes)
-      VALUES (${data.curatorId}, ${data.currency}, ${data.amount}, ${data.rate}, ${eurEquivalent}, ${data.notes || null})
+      INSERT INTO buybacks (curator_id, eur_amount, usdt_spent, rate, eur_balance_before, eur_balance_after, avg_rate_before, avg_rate_after, notes)
+      VALUES (${data.curatorId}, ${data.eurAmount}, ${data.usdtSpent}, ${data.rate}, ${eurBalanceBefore}, ${eurBalanceAfter}, ${avgRateBefore}, ${avgRateAfter}, ${data.notes || null})
     `
-    console.log("[v0] Buyback inserted successfully")
 
-    // Update curator balance
-    if (data.currency === "RUB") {
-      await sql`UPDATE curators SET balance_rub = balance_rub + ${data.amount} WHERE id = ${data.curatorId}`
-    } else if (data.currency === "EUR") {
-      await sql`UPDATE curators SET balance_eur = balance_eur + ${data.amount} WHERE id = ${data.curatorId}`
-    } else if (data.currency === "USDT") {
-      await sql`UPDATE curators SET balance_usdt = balance_usdt + ${data.amount} WHERE id = ${data.curatorId}`
-    }
+    // Update curator EUR balance
+    await sql`UPDATE curators SET balance_eur = ${eurBalanceAfter} WHERE id = ${data.curatorId}`
 
     revalidatePath("/exchange")
     return { success: true }
@@ -181,16 +196,16 @@ export async function closeDeal(id: number, data: {
   }
 }
 
-// Get average buyback rate for a currency from a curator
-export async function getAverageBuybackRate(curatorId: number, currency: string) {
+// Get average buyback rate (USDT/EUR) for a curator
+export async function getAverageBuybackRate(curatorId: number) {
   try {
     const [result] = await sql`
       SELECT 
-        SUM(amount) as total_amount,
-        SUM(eur_equivalent) as total_eur,
-        CASE WHEN SUM(amount) > 0 THEN SUM(eur_equivalent) / SUM(amount) ELSE 0 END as avg_rate
+        SUM(eur_amount) as total_eur,
+        SUM(usdt_spent) as total_usdt,
+        CASE WHEN SUM(eur_amount) > 0 THEN SUM(usdt_spent) / SUM(eur_amount) ELSE 0 END as avg_rate
       FROM buybacks
-      WHERE curator_id = ${curatorId} AND currency = ${currency}
+      WHERE curator_id = ${curatorId}
     `
     return { success: true, data: result }
   } catch (error) {
