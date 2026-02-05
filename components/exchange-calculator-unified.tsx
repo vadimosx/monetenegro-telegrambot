@@ -507,12 +507,13 @@ export function ExchangeCalculatorUnified({
         return
       }
 
-      // Save deal to Neon database and Google Sheets in parallel (non-blocking)
+      // Save deal to Neon database
       const dealCity = getCityName ? getCityName(selectedCity) : selectedCity
       const dealRateStr = rate !== null ? rate.toFixed(6) : "0"
+      console.log("[v0] Telegram sent OK, now saving deal to DB...")
 
-      const [dealResult, sheetsResult] = await Promise.allSettled([
-        fetch("/api/deals/create", {
+      try {
+        const dealRes = await fetch("/api/deals/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -526,16 +527,16 @@ export function ExchangeCalculatorUnified({
             telegramUsername: finalContact,
             city: dealCity,
           }),
-        }).then(async (res) => {
-          const data = await res.json()
-          if (res.ok) {
-            console.log("[v0] Deal saved to database, ID:", data.dealId)
-          } else {
-            console.log("[v0] Failed to save deal to database:", data.error)
-          }
-          return data
-        }),
-        fetch("/api/google-sheets/save-order", {
+        })
+        const dealData = await dealRes.json()
+        console.log("[v0] Deal API response:", dealRes.status, JSON.stringify(dealData))
+      } catch (dealErr) {
+        console.log("[v0] Deal API fetch error:", dealErr)
+      }
+
+      // Save to Google Sheets
+      try {
+        await fetch("/api/google-sheets/save-order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -549,14 +550,9 @@ export function ExchangeCalculatorUnified({
             timestamp: new Date().toISOString(),
             telegramUsername: finalContact,
           }),
-        }),
-      ])
-
-      if (dealResult.status === "rejected") {
-        console.log("[v0] Error saving deal:", dealResult.reason)
-      }
-      if (sheetsResult.status === "rejected") {
-        console.log("[v0] Error saving to Google Sheets:", sheetsResult.reason)
+        })
+      } catch (sheetsErr) {
+        console.log("[v0] Google Sheets save error:", sheetsErr)
       }
 
       alert("Спасибо за вашу заявку! С вами свяжется оператор в ближайшее время.")
