@@ -20,7 +20,7 @@ export async function refreshData() {
           LEFT JOIN curators c ON d.curator_id = c.id 
           ORDER BY d.created_at DESC 
           LIMIT 100`,
-      sql`SELECT * FROM currency_rates WHERE is_active = true ORDER BY currency_pair`,
+      sql`SELECT * FROM currency_rates WHERE is_active = true ORDER BY currency`,
     ])
 
     return { success: true, data: { curators, buybacks, deals, rates } }
