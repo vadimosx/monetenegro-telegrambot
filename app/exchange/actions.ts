@@ -105,23 +105,11 @@ export async function addBuyback(data: {
 
     // Update curator balance
     if (data.currency === "RUB") {
-      await sql`
-        UPDATE curators 
-        SET balance_rub = balance_rub + ${data.amount}
-        WHERE id = ${data.curatorId}
-      `
+      await sql`UPDATE curators SET balance_rub = balance_rub + ${data.amount} WHERE id = ${data.curatorId}`
     } else if (data.currency === "EUR") {
-      await sql`
-        UPDATE curators 
-        SET balance_eur = balance_eur + ${data.amount}
-        WHERE id = ${data.curatorId}
-      `
+      await sql`UPDATE curators SET balance_eur = balance_eur + ${data.amount} WHERE id = ${data.curatorId}`
     } else if (data.currency === "USDT") {
-      await sql`
-        UPDATE curators 
-        SET balance_usdt = balance_usdt + ${data.amount}
-        WHERE id = ${data.curatorId}
-      `
+      await sql`UPDATE curators SET balance_usdt = balance_usdt + ${data.amount} WHERE id = ${data.curatorId}`
     }
 
     revalidatePath("/exchange")
@@ -132,70 +120,54 @@ export async function addBuyback(data: {
   }
 }
 
-// Deal actions
-export async function createDeal(data: {
-  curatorId: number
-  currencyFrom: string
-  currencyTo: string
-  amountFrom: number
-  buybackRate: number
-  sellRate: number
-  notes: string
-}) {
-  try {
-    const amountTo = data.amountFrom * data.sellRate
-    const profitEur = data.amountFrom * data.sellRate - data.amountFrom * data.buybackRate
-    const profitPercent = ((data.sellRate - data.buybackRate) / data.buybackRate) * 100
-
-    await sql`
-      INSERT INTO deals (
-        curator_id, currency_from, currency_to, 
-        amount_from, amount_to, buyback_rate, sell_rate,
-        profit_eur, profit_percent, status, notes
-      )
-      VALUES (
-        ${data.curatorId}, ${data.currencyFrom}, ${data.currencyTo},
-        ${data.amountFrom}, ${amountTo}, ${data.buybackRate}, ${data.sellRate},
-        ${profitEur}, ${profitPercent}, 'open', ${data.notes || null}
-      )
-    `
-
-    revalidatePath("/exchange")
-    return { success: true }
-  } catch (error) {
-    console.error("Error creating deal:", error)
-    return { success: false, error: "Failed to create deal" }
-  }
-}
-
+// Close deal - assign curator, enter actual amounts, calculate profit, deduct balance
 export async function closeDeal(id: number, data: {
-  sellRate: number
-  notes: string
+  curatorId: number
+  actualGiveAmount: number
+  actualGiveCurrency: string
+  actualReceiveAmount: number
+  actualReceiveCurrency: string
+  actualRate: number
+  eurCostAtDeal: number
+  note: string
 }) {
   try {
     // Get the deal first
     const [deal] = await sql`SELECT * FROM deals WHERE id = ${id}`
-    
     if (!deal) {
       return { success: false, error: "Deal not found" }
     }
 
-    const amountTo = parseFloat(deal.amount_from) * data.sellRate
-    const profitEur = parseFloat(deal.amount_from) * data.sellRate - parseFloat(deal.amount_from) * parseFloat(deal.buyback_rate)
-    const profitPercent = ((data.sellRate - parseFloat(deal.buyback_rate)) / parseFloat(deal.buyback_rate)) * 100
+    // Calculate profit
+    // profit = what client pays (in EUR terms) - what we give (in EUR terms)
+    const profitTotal = data.actualGiveAmount * data.actualRate - data.actualGiveAmount * data.eurCostAtDeal
 
     await sql`
       UPDATE deals 
       SET 
-        sell_rate = ${data.sellRate},
-        amount_to = ${amountTo},
-        profit_eur = ${profitEur},
-        profit_percent = ${profitPercent},
+        curator_id = ${data.curatorId},
+        actual_give_amount = ${data.actualGiveAmount},
+        actual_give_currency = ${data.actualGiveCurrency},
+        actual_receive_amount = ${data.actualReceiveAmount},
+        actual_receive_currency = ${data.actualReceiveCurrency},
+        actual_rate = ${data.actualRate},
+        eur_cost_at_deal = ${data.eurCostAtDeal},
+        profit_total = ${profitTotal},
         status = 'closed',
-        closed_at = NOW(),
-        notes = COALESCE(notes || ' | ', '') || ${data.notes || ''}
+        completed_at = NOW(),
+        updated_at = NOW(),
+        note = CASE WHEN note IS NOT NULL AND note != '' THEN note || ' | ' || ${data.note || ''} ELSE ${data.note || null} END
       WHERE id = ${id}
     `
+
+    // Deduct from curator balance (the currency they gave us)
+    if (data.actualGiveCurrency === "RUB") {
+      await sql`UPDATE curators SET balance_rub = balance_rub - ${data.actualGiveAmount} WHERE id = ${data.curatorId}`
+    } else if (data.actualGiveCurrency === "EUR") {
+      await sql`UPDATE curators SET balance_eur = balance_eur - ${data.actualGiveAmount} WHERE id = ${data.curatorId}`
+    } else if (data.actualGiveCurrency === "USDT") {
+      await sql`UPDATE curators SET balance_usdt = balance_usdt - ${data.actualGiveAmount} WHERE id = ${data.curatorId}`
+    }
 
     revalidatePath("/exchange")
     return { success: true }
@@ -220,22 +192,5 @@ export async function getAverageBuybackRate(curatorId: number, currency: string)
   } catch (error) {
     console.error("Error getting average rate:", error)
     return { success: false, error: "Failed to get average rate" }
-  }
-}
-
-// Get curator stats
-export async function getCuratorStats(curatorId: number) {
-  try {
-    const [stats] = await sql`
-      SELECT 
-        (SELECT COUNT(*) FROM deals WHERE curator_id = ${curatorId}) as total_deals,
-        (SELECT COUNT(*) FROM deals WHERE curator_id = ${curatorId} AND status = 'closed') as closed_deals,
-        (SELECT COALESCE(SUM(profit_eur), 0) FROM deals WHERE curator_id = ${curatorId} AND status = 'closed') as total_profit,
-        (SELECT COALESCE(SUM(eur_equivalent), 0) FROM buybacks WHERE curator_id = ${curatorId}) as total_buybacks
-    `
-    return { success: true, data: stats }
-  } catch (error) {
-    console.error("Error getting curator stats:", error)
-    return { success: false, error: "Failed to get curator stats" }
   }
 }
