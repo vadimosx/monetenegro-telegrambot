@@ -26,7 +26,8 @@ async function getData() {
       curators: curators.length, 
       buybacks: buybacks.length, 
       deals: deals.length, 
-      rates: rates.length 
+      rates: rates.length,
+      firstDeal: deals[0] || null
     })
 
     return { curators, buybacks, deals, rates }

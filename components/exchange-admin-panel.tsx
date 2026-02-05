@@ -100,6 +100,7 @@ interface ExchangeAdminPanelProps {
 }
 
 export function ExchangeAdminPanel({ initialData }: ExchangeAdminPanelProps) {
+  console.log("[v0] ExchangeAdminPanel initialData deals:", JSON.stringify(initialData.deals?.slice(0, 2)))
   const [data, setData] = useState(initialData)
   const [isPending, startTransition] = useTransition()
   
