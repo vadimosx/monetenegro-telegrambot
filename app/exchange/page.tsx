@@ -2,11 +2,12 @@ import { neon } from "@neondatabase/serverless"
 import { ExchangeAdminPanel } from "@/components/exchange-admin-panel"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 async function getData() {
-  try {
-    const sql = neon(process.env.DATABASE_URL!)
+  const sql = neon(process.env.DATABASE_URL!)
 
+  try {
     const [curators, buybacks, deals, rates] = await Promise.all([
       sql`SELECT * FROM curators ORDER BY name`,
       sql`SELECT b.*, c.name as curator_name 
@@ -22,14 +23,6 @@ async function getData() {
       sql`SELECT * FROM currency_rates WHERE is_active = true ORDER BY currency`,
     ])
 
-    console.log("[v0] Exchange data loaded:", { 
-      curators: curators.length, 
-      buybacks: buybacks.length, 
-      deals: deals.length, 
-      rates: rates.length,
-      firstDeal: deals[0] || null
-    })
-
     return { curators, buybacks, deals, rates }
   } catch (error) {
     console.error("[v0] Error loading exchange data:", error)
@@ -39,10 +32,11 @@ async function getData() {
 
 export default async function ExchangePage() {
   const data = await getData()
+  const ts = Date.now()
 
   return (
     <div className="min-h-screen bg-background">
-      <ExchangeAdminPanel initialData={data} />
+      <ExchangeAdminPanel key={ts} initialData={data} />
     </div>
   )
 }
