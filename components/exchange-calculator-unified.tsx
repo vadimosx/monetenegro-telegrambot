@@ -445,7 +445,7 @@ export function ExchangeCalculatorUnified({
   }
 
   useEffect(() => {
-    const decimals = selectedDirection === "usdt-eur" || selectedDirection === "eur-usdt" ? 4 : 2
+    const decimals = 1
 
     if (lastEdited === "from" && amount) {
       if (rate !== null) {
