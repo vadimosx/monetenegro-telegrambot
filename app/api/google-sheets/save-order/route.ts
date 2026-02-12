@@ -88,12 +88,40 @@ export async function POST(request: Request) {
     const getUrl = `${webhookUrl}?${params.toString()}`
     console.log("[v0] Sending to Apps Script via GET with params")
 
-    const webhookResponse = await fetch(getUrl, {
-      method: "GET",
-      redirect: "follow",
-    })
+    // Follow redirects manually - Apps Script returns HTML-based redirects
+    let responseText = ""
+    let currentUrl = getUrl
 
-    const responseText = await webhookResponse.text()
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const res = await fetch(currentUrl, {
+        method: "GET",
+        redirect: "manual",
+      })
+
+      // Handle HTTP redirects (301/302/307/308)
+      if ([301, 302, 307, 308].includes(res.status)) {
+        const location = res.headers.get("location")
+        if (location) {
+          console.log(`[v0] HTTP ${res.status} redirect, following...`)
+          currentUrl = location
+          continue
+        }
+      }
+
+      responseText = await res.text()
+
+      // Handle HTML-based redirects (Apps Script "Moved Temporarily" page)
+      const hrefMatch = responseText.match(/HREF="([^"]+)"/)
+      if (hrefMatch?.[1]) {
+        currentUrl = hrefMatch[1].replace(/&amp;/g, "&")
+        console.log("[v0] HTML redirect, following...")
+        continue
+      }
+
+      // Got final response
+      break
+    }
+
     console.log("[v0] Google Sheets final response:", responseText.substring(0, 300))
 
     try {
