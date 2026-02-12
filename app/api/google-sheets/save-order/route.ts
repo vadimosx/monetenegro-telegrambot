@@ -29,18 +29,36 @@ export async function POST(request: Request) {
       year: "numeric",
     })
 
-    // Replace dots with commas for Google Sheets numeric formatting
-    const formatNumber = (num: number) => num.toString().replace(".", ",")
-
     const clientContact = telegramUsername || userContact || "N/A"
+
+    // Direction format: "USDT-EUR", "RUB-EUR", etc.
+    const direction = `${fromCurrency}-${toCurrency}`
+
+    // E1: incoming amount (what we receive from client = fromAmount)
+    const incomingAmount = Number.parseFloat(fromAmount) || 0
+
+    // F1: currency of incoming
+    const incomingCurrency = fromCurrency
+
+    // G1: incoming in USDT - only if fromCurrency is USDT, otherwise empty
+    const incomingUsdt = fromCurrency === "USDT" ? incomingAmount : null
+
+    // H1: EUR payout - EUR amount from order, empty if no EUR involved
+    let eurPayout: number | null = null
+    if (toCurrency === "EUR") {
+      eurPayout = Number.parseFloat(toAmount) || 0
+    } else if (fromCurrency === "EUR") {
+      eurPayout = incomingAmount
+    }
 
     console.log("[v0] Order data to send:", {
       date,
-      telegramUsername: clientContact,
-      direction: `${fromCurrency} → ${toCurrency}`,
-      fromAmount: formatNumber(fromAmount),
-      toAmount: formatNumber(toAmount),
-      rate: formatNumber(rate),
+      client: clientContact,
+      direction,
+      incomingAmount,
+      incomingCurrency,
+      incomingUsdt,
+      eurPayout,
     })
 
     const webhookResponse = await fetch(webhookUrl, {
@@ -50,13 +68,12 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         date,
-        telegramUsername: clientContact,
-        direction: `${fromCurrency} → ${toCurrency}`,
-        fromAmount: formatNumber(fromAmount),
-        fromCurrency,
-        toAmount: formatNumber(toAmount),
-        toCurrency,
-        rate: formatNumber(rate),
+        client: clientContact,
+        direction,
+        incomingAmount,
+        incomingCurrency,
+        incomingUsdt,
+        eurPayout,
       }),
       redirect: "follow",
     })
