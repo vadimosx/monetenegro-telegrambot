@@ -216,31 +216,40 @@ export function ExchangeCalculatorUnified({
 
     const tryGetTelegramUser = () => {
       const tg = (window as any).Telegram?.WebApp
-      if (!tg) return false
+      if (!tg) {
+        console.log("[v0] Telegram WebApp not found on window")
+        return false
+      }
 
       tg.ready()
       setIsTelegramWebApp(true)
+      console.log("[v0] Telegram WebApp found, initDataUnsafe:", JSON.stringify(tg.initDataUnsafe))
 
       const user = tg.initDataUnsafe?.user
       if (user) {
-        const username = user.username || user.first_name || `id_${user.id}`
+        const username = user.username ? `@${user.username}` : user.first_name || `id_${user.id}`
+        console.log("[v0] Telegram user detected:", username)
         setTelegramUsername(username)
         setTelegramUserId(user.id)
         return true
       }
+      console.log("[v0] Telegram WebApp exists but no user data")
       return false
     }
 
     // Try immediately
     if (!tryGetTelegramUser()) {
-      // Retry a few times - Telegram WebApp may not be ready yet
+      // Retry - Telegram WebApp SDK may load after our code
       let attempts = 0
       const interval = setInterval(() => {
         attempts++
-        if (tryGetTelegramUser() || attempts >= 10) {
+        if (tryGetTelegramUser() || attempts >= 20) {
           clearInterval(interval)
+          if (attempts >= 20) {
+            console.log("[v0] Gave up waiting for Telegram user data after 20 attempts")
+          }
         }
-      }, 300)
+      }, 500)
       return () => clearInterval(interval)
     }
   }, [])
@@ -576,7 +585,6 @@ export function ExchangeCalculatorUnified({
       setToCurrency("")
       setFromBank("")
       setToBank("")
-      setTelegramUsername("")
       setContactInput("")
     } catch (error) {
       setOrderError("Ошибка сети при отправке заявки")
