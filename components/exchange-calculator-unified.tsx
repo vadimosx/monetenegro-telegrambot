@@ -26,7 +26,6 @@ const currencies = [
   { value: "USDT", label: "USDT" },
   { value: "EUR", label: "EUR" },
   { value: "RUB", label: "RUB" },
-  { value: "RSD", label: "RSD" },
 ]
 
 const exchangeDirections = [
@@ -48,10 +47,6 @@ const exchangeDirections = [
   },
   { id: "usdt-rub", from: "USDT", to: "RUB", name: "USDT → RUB", banks: [] },
   { id: "rub-usdt", from: "RUB", to: "USDT", name: "RUB → USDT", banks: [] },
-  { id: "usdt-rsd", from: "USDT", to: "RSD", name: "USDT → RSD", banks: [] },
-  { id: "rsd-usdt", from: "RSD", to: "USDT", name: "RSD → USDT", banks: [] },
-  { id: "rub-rsd", from: "RUB", to: "RSD", name: "RUB → RSD", banks: [] },
-  { id: "rsd-rub", from: "RSD", to: "RUB", name: "RSD → RUB", banks: [] },
 ]
 
 export function ExchangeCalculatorUnified({
@@ -73,7 +68,7 @@ export function ExchangeCalculatorUnified({
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [realUsdEurRate, setRealUsdEurRate] = useState<number>(0)
   const [rubRate, setRubRate] = useState<number | null>(null)
-  const [rsdRate, setRsdRate] = useState<number | null>(null) // Added RSD rate state
+
   const [usdtEurPercentage, setUsdtEurPercentage] = useState<number>(0)
   const [rubEurTiers, setRubEurTiers] = useState<MarginTier[]>([])
   const [usdtEurTiers, setUsdtEurTiers] = useState<MarginTier[]>([])
@@ -203,7 +198,6 @@ export function ExchangeCalculatorUnified({
         const data = await response.json()
 
         if (data.rubRate) setRubRate(data.rubRate)
-        if (data.rsdRate) setRsdRate(data.rsdRate) // Load RSD rate
         if (data.usdtEurPercentage !== undefined) setUsdtEurPercentage(data.usdtEurPercentage)
         if (data.rubEurTiers) setRubEurTiers(data.rubEurTiers)
         if (data.usdtEurTiers) setUsdtEurTiers(data.usdtEurTiers)
@@ -323,18 +317,6 @@ export function ExchangeCalculatorUnified({
         const rubAmount = usdtAmount * rubRate
         return rubAmount / eurAmount
       }
-    } else if ((selectedDirection === "rsd-eur" || selectedDirection === "eur-rsd") && realUsdEurRate && rsdRate) {
-      if (selectedDirection === "rsd-eur") {
-        // RSD → EUR: RSD / rsdRate = EUR (direct conversion, no margin needed)
-        const rsdAmount = Number.parseFloat(amount) || 0
-        const eurAmount = rsdAmount / rsdRate
-        return eurAmount / rsdAmount
-      } else {
-        // EUR → RSD: EUR * rsdRate = RSD (direct conversion, no margin needed)
-        const eurAmount = Number.parseFloat(amount) || 0
-        const rsdAmount = eurAmount * rsdRate
-        return rsdAmount / eurAmount
-      }
     } else if (selectedDirection === "usdt-rub" && rubRate) {
       // USDT → RUB: USDT * rubRate, then apply margin
       const usdtAmount = Number.parseFloat(amount) || 0
@@ -348,35 +330,86 @@ export function ExchangeCalculatorUnified({
       const eurEquivalent = usdtAmountBeforeMargin * realUsdEurRate
       const margin = getUsdtMargin(eurEquivalent)
       return (1 / rubRate) * (1 - margin)
-    } else if (selectedDirection === "rsd-usdt" && rsdRate && realUsdEurRate) {
-      // RSD → USDT: RSD / rsdRate = EUR, then EUR → USDT
-      const rsdAmount = Number.parseFloat(amount) || 0
-      const eurAmount = rsdAmount / rsdRate
-      const usdtAmount = convertEurToUsdt(eurAmount)
-      return usdtAmount / rsdAmount
-    } else if (selectedDirection === "usdt-rsd" && rsdRate && realUsdEurRate) {
-      // USDT → RSD: USDT → EUR, then EUR * rsdRate = RSD
-      const usdtAmount = Number.parseFloat(amount) || 0
-      const eurAmount = convertUsdtToEur(usdtAmount)
-      const rsdAmount = Math.floor(eurAmount * rsdRate)
-      return rsdAmount / usdtAmount
-    } else if (selectedDirection === "rub-rsd" && rsdRate && rubRate && realUsdEurRate) {
-      // RUB → RSD: RUB / rubRate = USDT, USDT → EUR (with margin), EUR * rsdRate = RSD
-      const rubAmount = Number.parseFloat(amount) || 0
-      const usdtAmount = rubAmount / rubRate
-      const eurAmount = convertUsdtToEur(usdtAmount)
-      const rsdAmount = Math.floor(eurAmount * rsdRate)
-      
-      console.log("[v0] RUB→RSD:", rubAmount, "RUB /", rubRate, "=", usdtAmount.toFixed(2), "USDT →", eurAmount.toFixed(2), "EUR *", rsdRate, "=", rsdAmount, "RSD")
-      
-      return rsdAmount / rubAmount
-    } else if (selectedDirection === "rsd-rub" && rsdRate && rubRate && realUsdEurRate) {
-      // RSD → RUB: RSD / rsdRate = EUR, EUR → USDT, USDT * rubRate = RUB
-      const rsdAmountInput = Number.parseFloat(amount) || 0
-      const eurAmount = rsdAmountInput / rsdRate
-      const usdtAmount = convertEurToUsdt(eurAmount)
-      const rubAmount = usdtAmount * rubRate
-      return rubAmount / rsdAmountInput
+    }
+
+    return null
+  }
+
+  // Reverse calculation: given toAmount, calculate fromAmount
+  const getReverseFromAmount = (selectedDirection: string, toAmountStr: string): number | null => {
+    const toAmt = Number.parseFloat(toAmountStr) || 0
+    if (toAmt <= 0 || !realUsdEurRate) return null
+
+    if (selectedDirection === "usdt-eur") {
+      // toAmt is EUR, need to find USDT
+      // EUR = USDT * effectiveRate * (1 - margin)
+      // We iterate: guess USDT, compute EUR, adjust
+      const baseRate = realUsdEurRate
+      const effectiveRate = rateSource !== "fix" ? baseRate * (1 + usdtEurPercentage / 100) : baseRate
+      // Initial guess without margin
+      let usdtGuess = toAmt / effectiveRate
+      for (let i = 0; i < 5; i++) {
+        const eurResult = convertUsdtToEur(usdtGuess)
+        usdtGuess = usdtGuess * (toAmt / eurResult)
+      }
+      return usdtGuess
+    } else if (selectedDirection === "eur-usdt") {
+      // toAmt is USDT, need to find EUR
+      const baseRate = realUsdEurRate
+      const effectiveRate = rateSource !== "fix" ? baseRate * (1 + usdtEurPercentage / 100) : baseRate
+      let eurGuess = toAmt * effectiveRate
+      for (let i = 0; i < 5; i++) {
+        const usdtResult = convertEurToUsdt(eurGuess)
+        eurGuess = eurGuess * (toAmt / usdtResult)
+      }
+      return eurGuess
+    } else if (selectedDirection === "rub-eur" && rubRate) {
+      // toAmt is EUR, need RUB
+      // RUB / rubRate = USDT, USDT -> EUR
+      // Reverse: find USDT that gives toAmt EUR, then USDT * rubRate = RUB
+      const baseRate = realUsdEurRate
+      const effectiveRate = rateSource !== "fix" ? baseRate * (1 + usdtEurPercentage / 100) : baseRate
+      let usdtGuess = toAmt / effectiveRate
+      for (let i = 0; i < 5; i++) {
+        const eurResult = convertUsdtToEur(usdtGuess)
+        usdtGuess = usdtGuess * (toAmt / eurResult)
+      }
+      return usdtGuess * rubRate
+    } else if (selectedDirection === "eur-rub" && rubRate) {
+      // toAmt is RUB, need EUR
+      // EUR -> USDT, USDT * rubRate = RUB
+      const baseRate = realUsdEurRate
+      const effectiveRate = rateSource !== "fix" ? baseRate * (1 + usdtEurPercentage / 100) : baseRate
+      let eurGuess = toAmt / rubRate * effectiveRate
+      for (let i = 0; i < 5; i++) {
+        const usdtFromEur = convertEurToUsdt(eurGuess)
+        const rubResult = usdtFromEur * rubRate
+        eurGuess = eurGuess * (toAmt / rubResult)
+      }
+      return eurGuess
+    } else if (selectedDirection === "usdt-rub" && rubRate) {
+      // toAmt is RUB, need USDT
+      // USDT * rubRate * (1 - margin) = RUB
+      let usdtGuess = toAmt / rubRate
+      for (let i = 0; i < 5; i++) {
+        const eurEquivalent = usdtGuess * realUsdEurRate
+        const margin = getRubMargin(eurEquivalent)
+        const rubResult = usdtGuess * rubRate * (1 - margin)
+        usdtGuess = usdtGuess * (toAmt / rubResult)
+      }
+      return usdtGuess
+    } else if (selectedDirection === "rub-usdt" && rubRate) {
+      // toAmt is USDT, need RUB
+      // RUB / rubRate = USDT_before, USDT_before * (1 - margin) = USDT
+      let rubGuess = toAmt * rubRate
+      for (let i = 0; i < 5; i++) {
+        const usdtBeforeMargin = rubGuess / rubRate
+        const eurEquivalent = usdtBeforeMargin * realUsdEurRate
+        const margin = getUsdtMargin(eurEquivalent)
+        const usdtResult = usdtBeforeMargin * (1 - margin)
+        rubGuess = rubGuess * (toAmt / usdtResult)
+      }
+      return rubGuess
     }
 
     return null
@@ -408,42 +441,26 @@ export function ExchangeCalculatorUnified({
       return `1 RUB = ${rate.toFixed(4)} USDT`
     }
 
-    if (selectedDirection === "usdt-rsd") {
-      return `1 USDT = ${rate.toFixed(2)} RSD`
-    } else if (selectedDirection === "rsd-usdt") {
-      return `1 RSD = ${rate.toFixed(4)} USDT`
-    } else if (selectedDirection === "rub-rsd") {
-      return `1 RUB = ${rate.toFixed(2)} RSD`
-    } else if (selectedDirection === "rsd-rub") {
-      return `1 RSD = ${rate.toFixed(2)} RUB`
-    }
-
     return null
   }
 
   useEffect(() => {
+    const decimals = selectedDirection === "usdt-eur" || selectedDirection === "eur-usdt" ? 4 : 2
+
     if (lastEdited === "from" && amount) {
-      const calculated =
-        rate !== null
-          ? (Number.parseFloat(amount) * rate).toFixed(
-              selectedDirection === "usdt-eur" || selectedDirection === "eur-usdt" || selectedDirection === "rsd-usdt"
-                ? 4
-                : 2,
-            )
-          : "0"
-      setToAmount(calculated)
+      if (rate !== null) {
+        const calculated = (Number.parseFloat(amount) * rate).toFixed(decimals)
+        setToAmount(calculated)
+      }
     } else if (lastEdited === "to" && toAmount) {
-      const calculated =
-        rate !== null
-          ? (Number.parseFloat(toAmount) / rate).toFixed(
-              selectedDirection === "usdt-eur" || selectedDirection === "eur-usdt" || selectedDirection === "rsd-usdt"
-                ? 4
-                : 2,
-            )
-          : "0"
-      setAmount(calculated)
+      const reverseFrom = getReverseFromAmount(selectedDirection, toAmount)
+      if (reverseFrom !== null) {
+        setAmount(reverseFrom.toFixed(decimals))
+      } else if (rate !== null && rate !== 0) {
+        setAmount((Number.parseFloat(toAmount) / rate).toFixed(decimals))
+      }
     }
-  }, [amount, toAmount, rate, lastEdited, selectedDirection])
+  }, [amount, toAmount, rate, lastEdited, selectedDirection, realUsdEurRate, rubRate, usdtEurPercentage, rateSource])
 
   const getBanksForCurrency = (currency: string) => {
     if (currency === "RUB") {
@@ -738,11 +755,9 @@ export function ExchangeCalculatorUnified({
                         givingCurrency === "RUB" && rubRate ? (toAmt / rubRate) * (realUsdEurRate || 1) : toAmt
                       return (getRubMargin(eurEquivalent) * 100).toFixed(1)
                     } else {
-                      // USDT/EUR/RSD - convert to EUR equivalent
+                      // USDT/EUR - convert to EUR equivalent
                       let eurEquivalent = toAmt
-                      if (givingCurrency === "RSD" && rsdRate) {
-                        eurEquivalent = toAmt / rsdRate
-                      } else if (givingCurrency === "USDT" && realUsdEurRate) {
+                      if (givingCurrency === "USDT" && realUsdEurRate) {
                         eurEquivalent = toAmt * realUsdEurRate
                       }
                       return (getUsdtMargin(eurEquivalent) * 100).toFixed(1)
