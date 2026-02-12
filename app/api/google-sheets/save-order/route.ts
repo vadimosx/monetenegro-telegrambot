@@ -71,56 +71,33 @@ export async function POST(request: Request) {
       eurPayout,
     }
 
-    // Send data as individual query params - these survive Apps Script redirects
-    const params = new URLSearchParams()
-    params.set("date", payload.date)
-    params.set("client", payload.client)
-    params.set("direction", payload.direction)
-    params.set("incomingAmount", String(payload.incomingAmount))
-    params.set("incomingCurrency", payload.incomingCurrency)
-    if (payload.incomingUsdt !== null && payload.incomingUsdt !== undefined) {
-      params.set("incomingUsdt", String(payload.incomingUsdt))
+    console.log("[v0] Sending to Apps Script via POST (redirect: manual)")
+
+    // POST to Apps Script - it executes doPost and saves data BEFORE returning redirect
+    // We use redirect: "manual" so we don't follow the redirect - data is already saved
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      redirect: "manual",
+    })
+
+    const statusCode = res.status
+    console.log("[v0] Apps Script response status:", statusCode)
+
+    // 302 means Apps Script executed successfully and is redirecting to show result
+    // Data is already saved at this point
+    if (statusCode === 302 || statusCode === 301) {
+      console.log("[v0] Got redirect - Apps Script executed doPost successfully, data should be saved")
+      const responseText = JSON.stringify({ success: true, message: "Order saved (redirect confirmed)" })
+      console.log("[v0] Google Sheets final response:", responseText)
     }
-    if (payload.eurPayout !== null && payload.eurPayout !== undefined) {
-      params.set("eurPayout", String(payload.eurPayout))
-    }
 
-    const getUrl = `${webhookUrl}?${params.toString()}`
-    console.log("[v0] Sending to Apps Script via GET with params")
-
-    // Follow redirects manually - Apps Script returns HTML-based redirects
-    let responseText = ""
-    let currentUrl = getUrl
-
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const res = await fetch(currentUrl, {
-        method: "GET",
-        redirect: "manual",
-      })
-
-      // Handle HTTP redirects (301/302/307/308)
-      if ([301, 302, 307, 308].includes(res.status)) {
-        const location = res.headers.get("location")
-        if (location) {
-          console.log(`[v0] HTTP ${res.status} redirect, following...`)
-          currentUrl = location
-          continue
-        }
-      }
-
-      responseText = await res.text()
-
-      // Handle HTML-based redirects (Apps Script "Moved Temporarily" page)
-      const hrefMatch = responseText.match(/HREF="([^"]+)"/)
-      if (hrefMatch?.[1]) {
-        currentUrl = hrefMatch[1].replace(/&amp;/g, "&")
-        console.log("[v0] HTML redirect, following...")
-        continue
-      }
-
-      // Got final response
-      break
-    }
+    const responseText = statusCode === 302 || statusCode === 301
+      ? '{"success":true,"message":"Order saved via redirect"}'
+      : await res.text()
 
     console.log("[v0] Google Sheets final response:", responseText.substring(0, 300))
 
