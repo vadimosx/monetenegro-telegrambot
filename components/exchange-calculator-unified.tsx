@@ -212,16 +212,36 @@ export function ExchangeCalculatorUnified({
   }, [])
 
   useEffect(() => {
-    if (typeof window !== "undefined" && (window as any).Telegram?.WebApp) {
-      const tg = (window as any).Telegram.WebApp
+    if (typeof window === "undefined") return
+
+    const tryGetTelegramUser = () => {
+      const tg = (window as any).Telegram?.WebApp
+      if (!tg) return false
+
       tg.ready()
       setIsTelegramWebApp(true)
 
       const user = tg.initDataUnsafe?.user
       if (user) {
-        setTelegramUsername(user.username || "")
+        const username = user.username || user.first_name || `id_${user.id}`
+        setTelegramUsername(username)
         setTelegramUserId(user.id)
+        return true
       }
+      return false
+    }
+
+    // Try immediately
+    if (!tryGetTelegramUser()) {
+      // Retry a few times - Telegram WebApp may not be ready yet
+      let attempts = 0
+      const interval = setInterval(() => {
+        attempts++
+        if (tryGetTelegramUser() || attempts >= 10) {
+          clearInterval(interval)
+        }
+      }, 300)
+      return () => clearInterval(interval)
     }
   }, [])
 
