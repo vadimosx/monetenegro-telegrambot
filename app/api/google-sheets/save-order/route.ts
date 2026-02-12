@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 const HARDCODED_WEBHOOK_URL =
-  "https://script.google.com/macros/s/AKfycbx8-vlEoFmhtOp4VgmXJlENa5TJkK4N9sd9rmOXqFkaJ-CDWd4UX6peB0AOcNyM-Ci56A/exec"
+  "https://script.google.com/macros/s/AKfycbxPes1vMDtSALCH2SxfBebsrOb_yi9IsPN1Tk2GJg65wJWVgVTDedcWPYEEPCNt8pPkGg/exec"
 
 export async function POST(request: Request) {
   try {
