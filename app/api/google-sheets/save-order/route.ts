@@ -61,36 +61,70 @@ export async function POST(request: Request) {
       eurPayout,
     })
 
-    const webhookResponse = await fetch(webhookUrl, {
+    const payload = JSON.stringify({
+      date,
+      client: clientContact,
+      direction,
+      incomingAmount,
+      incomingCurrency,
+      incomingUsdt,
+      eurPayout,
+    })
+
+    // First request - Apps Script returns a redirect
+    const firstResponse = await fetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        date,
-        client: clientContact,
-        direction,
-        incomingAmount,
-        incomingCurrency,
-        incomingUsdt,
-        eurPayout,
-      }),
-      redirect: "follow",
+      body: payload,
+      redirect: "manual",
     })
 
-    const responseText = await webhookResponse.text()
+    let responseText: string
+
+    // If redirect, follow it manually with the payload
+    if (firstResponse.status === 302 || firstResponse.status === 301 || firstResponse.status === 307) {
+      const redirectUrl = firstResponse.headers.get("location")
+      console.log("[v0] Got redirect to:", redirectUrl)
+
+      if (redirectUrl) {
+        const secondResponse = await fetch(redirectUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: payload,
+        })
+        responseText = await secondResponse.text()
+      } else {
+        responseText = await firstResponse.text()
+      }
+    } else {
+      responseText = await firstResponse.text()
+    }
+
     console.log("[v0] Google Sheets response:", responseText)
 
     if (responseText.includes("<HTML>") || responseText.includes("<html>")) {
-      console.error("[v0] Google Sheets webhook returned HTML redirect")
-      console.error("[v0] Response:", responseText.substring(0, 500))
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Google Sheets webhook configuration error. Check Apps Script deployment settings.",
-        },
-        { status: 500 },
-      )
+      // Try one more approach - GET with query params (Apps Script sometimes needs this)
+      console.log("[v0] HTML response, trying alternative approach...")
+      const encodedPayload = encodeURIComponent(payload)
+      const altResponse = await fetch(`${webhookUrl}?data=${encodedPayload}`)
+      const altText = await altResponse.text()
+      console.log("[v0] Alternative response:", altText)
+
+      if (altText.includes("<HTML>") || altText.includes("<html>")) {
+        console.error("[v0] Google Sheets webhook still returning HTML")
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Google Sheets webhook configuration error. Redeploy Apps Script.",
+          },
+          { status: 500 },
+        )
+      }
+      responseText = altText
     }
 
     try {
