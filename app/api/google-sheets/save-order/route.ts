@@ -71,49 +71,30 @@ export async function POST(request: Request) {
       eurPayout,
     }
 
+    // Send data as individual query params - these survive Apps Script redirects
     const params = new URLSearchParams()
-    params.set("data", JSON.stringify(payload))
-    const getUrl = `${webhookUrl}?${params.toString()}`
-
-    console.log("[v0] Sending to Apps Script via GET")
-
-    // Apps Script returns HTML with redirect - we need to follow it manually
-    let responseText = ""
-    const maxRedirects = 5
-    let currentUrl = getUrl
-
-    for (let i = 0; i < maxRedirects; i++) {
-      const res = await fetch(currentUrl, {
-        method: "GET",
-        redirect: "manual",
-      })
-
-      // Check for HTTP redirect (301, 302, 307, 308)
-      if ([301, 302, 307, 308].includes(res.status)) {
-        const location = res.headers.get("location")
-        if (location) {
-          console.log(`[v0] HTTP redirect ${res.status} to: ${location.substring(0, 100)}...`)
-          currentUrl = location
-          continue
-        }
-      }
-
-      responseText = await res.text()
-
-      // Check for HTML meta/JS redirect
-      const hrefMatch = responseText.match(/HREF="([^"]+)"/)
-      if (hrefMatch && hrefMatch[1]) {
-        const redirectUrl = hrefMatch[1].replace(/&amp;/g, "&")
-        console.log(`[v0] HTML redirect to: ${redirectUrl.substring(0, 100)}...`)
-        currentUrl = redirectUrl
-        continue
-      }
-
-      // No more redirects - we have the final response
-      break
+    params.set("date", payload.date)
+    params.set("client", payload.client)
+    params.set("direction", payload.direction)
+    params.set("incomingAmount", String(payload.incomingAmount))
+    params.set("incomingCurrency", payload.incomingCurrency)
+    if (payload.incomingUsdt !== null && payload.incomingUsdt !== undefined) {
+      params.set("incomingUsdt", String(payload.incomingUsdt))
+    }
+    if (payload.eurPayout !== null && payload.eurPayout !== undefined) {
+      params.set("eurPayout", String(payload.eurPayout))
     }
 
-    console.log("[v0] Google Sheets final response:", responseText.substring(0, 200))
+    const getUrl = `${webhookUrl}?${params.toString()}`
+    console.log("[v0] Sending to Apps Script via GET with params")
+
+    const webhookResponse = await fetch(getUrl, {
+      method: "GET",
+      redirect: "follow",
+    })
+
+    const responseText = await webhookResponse.text()
+    console.log("[v0] Google Sheets final response:", responseText.substring(0, 300))
 
     try {
       const webhookResult = JSON.parse(responseText)
