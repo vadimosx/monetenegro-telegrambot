@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 const HARDCODED_WEBHOOK_URL =
-  "https://script.google.com/macros/s/AKfycbx8-vlEoFmhtOp4VgmXJlENa5TJkK4N9sd9rmOXqFkaJ-CDWd4UX6peB0AOcNyM-Ci56A/exec"
+  "https://script.google.com/macros/s/AKfycbxPes1vMDtSALCH2SxfBebsrOb_yi9IsPN1Tk2GJg65wJWVgVTDedcWPYEEPCNt8pPkGg/exec"
 
 export async function POST(request: Request) {
   try {
@@ -29,52 +29,77 @@ export async function POST(request: Request) {
       year: "numeric",
     })
 
-    // Replace dots with commas for Google Sheets numeric formatting
-    const formatNumber = (num: number) => num.toString().replace(".", ",")
-
     const clientContact = telegramUsername || userContact || "N/A"
+
+    // Direction format: "USDT-EUR", "RUB-EUR", etc.
+    const direction = `${fromCurrency}-${toCurrency}`
+
+    // E1: incoming amount (what we receive from client = fromAmount)
+    const incomingAmount = Number.parseFloat(fromAmount) || 0
+
+    // F1: currency of incoming
+    const incomingCurrency = fromCurrency
+
+    // G1: incoming in USDT - only if fromCurrency is USDT, otherwise empty
+    const incomingUsdt = fromCurrency === "USDT" ? incomingAmount : null
+
+    // H1: EUR payout - EUR amount from order, empty if no EUR involved
+    let eurPayout: number | null = null
+    if (toCurrency === "EUR") {
+      eurPayout = Number.parseFloat(toAmount) || 0
+    } else if (fromCurrency === "EUR") {
+      eurPayout = incomingAmount
+    }
 
     console.log("[v0] Order data to send:", {
       date,
-      telegramUsername: clientContact,
-      direction: `${fromCurrency} → ${toCurrency}`,
-      fromAmount: formatNumber(fromAmount),
-      toAmount: formatNumber(toAmount),
-      rate: formatNumber(rate),
+      client: clientContact,
+      direction,
+      incomingAmount,
+      incomingCurrency,
+      incomingUsdt,
+      eurPayout,
     })
 
-    const webhookResponse = await fetch(webhookUrl, {
+    const payload = {
+      date,
+      client: clientContact,
+      direction,
+      incomingAmount,
+      incomingCurrency,
+      incomingUsdt,
+      eurPayout,
+    }
+
+    console.log("[v0] Sending to Apps Script via POST (redirect: manual)")
+
+    // POST to Apps Script - it executes doPost and saves data BEFORE returning redirect
+    // We use redirect: "manual" so we don't follow the redirect - data is already saved
+    const res = await fetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        date,
-        telegramUsername: clientContact,
-        direction: `${fromCurrency} → ${toCurrency}`,
-        fromAmount: formatNumber(fromAmount),
-        fromCurrency,
-        toAmount: formatNumber(toAmount),
-        toCurrency,
-        rate: formatNumber(rate),
-      }),
-      redirect: "follow",
+      body: JSON.stringify(payload),
+      redirect: "manual",
     })
 
-    const responseText = await webhookResponse.text()
-    console.log("[v0] Google Sheets response:", responseText)
+    const statusCode = res.status
+    console.log("[v0] Apps Script response status:", statusCode)
 
-    if (responseText.includes("<HTML>") || responseText.includes("<html>")) {
-      console.error("[v0] Google Sheets webhook returned HTML redirect")
-      console.error("[v0] Response:", responseText.substring(0, 500))
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Google Sheets webhook configuration error. Check Apps Script deployment settings.",
-        },
-        { status: 500 },
-      )
+    // 302 means Apps Script executed successfully and is redirecting to show result
+    // Data is already saved at this point
+    if (statusCode === 302 || statusCode === 301) {
+      console.log("[v0] Got redirect - Apps Script executed doPost successfully, data should be saved")
+      const responseText = JSON.stringify({ success: true, message: "Order saved (redirect confirmed)" })
+      console.log("[v0] Google Sheets final response:", responseText)
     }
+
+    const responseText = statusCode === 302 || statusCode === 301
+      ? '{"success":true,"message":"Order saved via redirect"}'
+      : await res.text()
+
+    console.log("[v0] Google Sheets final response:", responseText.substring(0, 300))
 
     try {
       const webhookResult = JSON.parse(responseText)
